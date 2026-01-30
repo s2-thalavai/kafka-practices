@@ -1,8 +1,9 @@
 
 
-## For Azure K8S (AKS) workloads
+## For Azure K8S (AKS) workloads vs Confluent Kafka
 
 > **AKS + Strimzi + Managed Identity + Premium SSD**
+> Production-grade P2P Kafka platform (3 AZ)
 
 **Key principles**
 
@@ -312,9 +313,192 @@ Your rack-aware Kafka survives a full AZ loss.
 ✔ Helm + ArgoCD GitOps  
 ✔ Prometheus + Grafana alerts
 
+-----------
+
+# Cost
+
+
+**Kafka layer**
+
+-   3 Kafka brokers (1 per AZ)
+    
+-   3 ZooKeeper nodes
+    
+-   Dedicated Kafka node pool
+    
+-   VM size: `Standard_D8s_v5`
+    
+-   Disk: 512 Gi Premium SSD per broker
+    
+
+**Platform**
+
+-   AKS control plane (paid)
+    
+-   Prometheus + Grafana
+    
+-   MirrorMaker 2 (2 replicas)
+    
+
+No traffic egress to internet (private VNet).
+
+
+## 1. AKS Control Plane
+
+| Item                   | Cost             |
+| ---------------------- | ---------------- |
+| AKS cluster management | **~$73 / month** |
+
+> Fixed cost per cluster. Doesn’t change with nodes.
+
+## 2. Kafka Broker Node Pool (BIGGEST COST)
+
+Compute (Kafka brokers)
+
+| Item              | Qty | Unit cost | Monthly   |
+| ----------------- | --- | --------- | --------- |
+| `Standard_D8s_v5` | 3   | ~$280     | **~$840** |
+
+
+-   8 vCPU / 32 GB RAM
+    
+-   One broker per node (best practice)
+
+## Storage (Premium SSD)
+
+| Disk               | Qty | Unit cost | Monthly   |
+| ------------------ | --- | --------- | --------- |
+| 512 Gi Premium SSD | 3   | ~$70      | **~$210** |
+
+> Disk size determines IOPS → this is worth it for Kafka.
+
+## 3. ZooKeeper Node Pool
+
+You can reuse Kafka nodes or separate them.
+(Production usually separates.)
+
+### Compute
+
+| Item              | Qty | Unit cost | Monthly   |
+| ----------------- | --- | --------- | --------- |
+| `Standard_D4s_v5` | 3   | ~$140     | **~$420** |
+
+### Storage
+| Disk               | Qty | Monthly  |
+| ------------------ | --- | -------- |
+| 128 Gi Premium SSD | 3   | **~$45** |
+
+
+## 4. MirrorMaker 2 (DR Replication)
+
+Runs as pods on non-Kafka node pool.
+
+| Item             | Monthly      |
+| ---------------- | ------------ |
+| Compute (2 pods) | **~$80–120** |
+
+Cost depends on where you schedule it.
+
+## 5. Prometheus + Grafana
+
+| Component             | Monthly |
+| --------------------- | ------- |
+| Prometheus (stateful) | ~$50    |
+| Grafana               | ~$20    |
+
+> Or Azure Managed Prometheus + Grafana (slightly higher, less ops).
+
+## 6. Networking & Misc
+
+| Item                      | Monthly |
+| ------------------------- | ------- |
+| Load balancers (internal) | ~$20    |
+| Private DNS, VNet         | ~$10–20 |
+
+## TOTAL MONTHLY COST (Realistic)
+
+🔹 Baseline Production Kafka Platform
+
+| Layer             | Cost |
+| ----------------- | ---- |
+| AKS control plane | $73  |
+| Kafka brokers     | $840 |
+| Kafka storage     | $210 |
+| ZooKeeper compute | $420 |
+| ZooKeeper storage | $45  |
+| MM2               | $100 |
+| Observability     | $70  |
+| Networking        | $30  |
+
+> Total: ~$1,800 – $1,900 / month
+
+
+## Cost Optimization (Safe vs Unsafe)
+
+### Safe optimizations
+
+-   Reduce disk size if retention is low
+    
+-   Use `D4s_v5` for non-critical environments
+    
+-   Share ZK with Kafka nodes (small clusters)
+    
+
+### Unsafe (don’t do this for P2P)
+
+-   Spot VMs
+    
+-   Autoscaling Kafka nodes
+    
+-   Standard SSD
+    
+-   Single AZ
+
+## Compare With Alternatives
+
+| Option                                       | Monthly Cost | Ops       |
+| -------------------------------------------- | ------------ | --------- |
+| **AKS + Strimzi (this)**                     | ~$1.9k       | Medium    |
+| Managed Kafka (Azure Event Hubs / Confluent) | $2.5k–4k     | Low       |
+| DIY VMs                                      | ~$1.5k       | High pain |
 
 ------------------------------------------
 
+## Compare with Confluent Cloud pricing
+
+| Dimension          | AKS + Strimzi | Confluent Cloud |
+| ------------------ | ------------- | --------------- |
+| Monthly cost       | **~$1.9k**    | **~$3k+**       |
+| Throughput pricing | None          |  Metered        |
+| Ops effort         | Medium        | Very low        |
+| Kafka features     | Full OSS      | Full + extras   |
+| Schema Registry    | DIY           | Built-in        |
+| DR                 | MirrorMaker 2 | Cluster Linking |
+| Lock-in            | None          | Medium          |
+| Scaling traffic    | Cheap         | Expensive       |
+| Audit / UI         | DIY           | Excellent       |
+
+## Cost per 1M Payments
+
+| Monthly Payments | AKS + Strimzi | Confluent Cloud |
+| ---------------- | ------------- | --------------- |
+| 10M              | $190          | **$86**         |
+| 50M              | $38           | **$26**         |
+| 100M             | $19           | **$16**         |
+| 500M             | **$3.8**      | $11             |
+
+## Break-Even Point (This Is the Key Insight)
+
+-   **Below ~30–40M payments/month**  
+       **Confluent Cloud is cheaper + easier**
+    
+-   **Above ~60–80M payments/month**  
+      **AKS + Strimzi wins on cost**
+    
+-   **At scale (100M+)**  
+     Strimzi is **2–3× cheaper per payment**
+    
+-----------------------------
 
 ## For AWS workloads
 
