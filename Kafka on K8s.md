@@ -1,6 +1,8 @@
 
 
-## For Azure K8S (AKS) workloads vs Confluent Kafka
+## For Azure K8S (AKS) workloads vs Confluent Kafka (Cheaper and No Ops)
+
+#### https://www.confluent.io/confluent-cloud/pricing/
 
 <img width="1082" height="442" alt="image" src="https://github.com/user-attachments/assets/30d5567b-cc40-44ff-bef2-3673d5fd6ecb" />
 
