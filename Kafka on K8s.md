@@ -2,6 +2,10 @@
 
 ## For Azure K8S (AKS) workloads vs Confluent Kafka
 
+<img width="1082" height="442" alt="image" src="https://github.com/user-attachments/assets/30d5567b-cc40-44ff-bef2-3673d5fd6ecb" />
+
+-----------
+
 > **AKS + Strimzi + Managed Identity + Premium SSD**
 > Production-grade P2P Kafka platform (3 AZ)
 
