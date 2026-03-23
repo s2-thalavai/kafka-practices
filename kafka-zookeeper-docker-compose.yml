@@ -11,43 +11,56 @@ services:
       ZOOKEEPER_SERVER_ID: 1
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_SERVERS: zookeeper-1:2888:3888;zookeeper-2:2888:3888;zookeeper-3:2888:3888
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
   zookeeper-2:
     image: confluentinc/cp-zookeeper:7.6.0
     environment:
       ZOOKEEPER_SERVER_ID: 2
       ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_SERVERS: zookeeper-1:2888:3888;zookeeper-2:2888:3888;zookeeper-3:2888:3888
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
   zookeeper-3:
     image: confluentinc/cp-zookeeper:7.6.0
     environment:
       ZOOKEEPER_SERVER_ID: 3
       ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_SERVERS: zookeeper-1:2888:3888;zookeeper-2:2888:3888;zookeeper-3:2888:3888
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
 # ----------------------------
-# KAFKA BROKERS (mTLS)
+# KAFKA BROKERS
 # ----------------------------
   kafka-1:
     image: confluentinc/cp-kafka:7.6.0
     depends_on: [zookeeper-1, zookeeper-2, zookeeper-3]
     ports:
-      - "9093:9093"
+      - "19093:9093"
       - "7071:7071"
     volumes:
+      - kafka-data-1:/var/lib/kafka/data
       - ./secrets:/etc/kafka/secrets
       - ./jmx-exporter:/opt/jmx
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
 
-      KAFKA_LISTENERS: SSL://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: SSL://kafka-1:9093
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SSL:SSL
-      KAFKA_INTER_BROKER_LISTENER_NAME: SSL
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092,EXTERNAL://localhost:19093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SSL,EXTERNAL:SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
 
-      # mTLS
       KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.server.keystore.jks
       KAFKA_SSL_KEYSTORE_PASSWORD: password
       KAFKA_SSL_KEY_PASSWORD: password
@@ -55,30 +68,37 @@ services:
       KAFKA_SSL_TRUSTSTORE_PASSWORD: password
       KAFKA_SSL_CLIENT_AUTH: required
 
-      # Replication
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
       KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
 
-      # JMX
       KAFKA_JMX_PORT: 9999
       KAFKA_OPTS: "-javaagent:/opt/jmx/jmx_prometheus_javaagent.jar=7071:/opt/jmx/config.yml"
+
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.5"
 
   kafka-2:
     image: confluentinc/cp-kafka:7.6.0
     depends_on: [zookeeper-1, zookeeper-2, zookeeper-3]
     ports:
-      - "9094:9093"
+      - "19094:9093"
       - "7072:7071"
     volumes:
+      - kafka-data-2:/var/lib/kafka/data
       - ./secrets:/etc/kafka/secrets
       - ./jmx-exporter:/opt/jmx
     environment:
       KAFKA_BROKER_ID: 2
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
-      KAFKA_LISTENERS: SSL://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: SSL://kafka-2:9093
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SSL:SSL
-      KAFKA_INTER_BROKER_LISTENER_NAME: SSL
+
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092,EXTERNAL://localhost:19094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SSL,EXTERNAL:SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
 
       KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.server.keystore.jks
       KAFKA_SSL_KEYSTORE_PASSWORD: password
@@ -87,25 +107,32 @@ services:
       KAFKA_SSL_TRUSTSTORE_PASSWORD: password
       KAFKA_SSL_CLIENT_AUTH: required
 
-      KAFKA_JMX_PORT: 9999
-      KAFKA_OPTS: "-javaagent:/opt/jmx/jmx_prometheus_javaagent.jar=7071:/opt/jmx/config.yml"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.5"
 
   kafka-3:
     image: confluentinc/cp-kafka:7.6.0
     depends_on: [zookeeper-1, zookeeper-2, zookeeper-3]
     ports:
-      - "9095:9093"
+      - "19095:9093"
       - "7073:7071"
     volumes:
+      - kafka-data-3:/var/lib/kafka/data
       - ./secrets:/etc/kafka/secrets
       - ./jmx-exporter:/opt/jmx
     environment:
       KAFKA_BROKER_ID: 3
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
-      KAFKA_LISTENERS: SSL://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: SSL://kafka-3:9093
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SSL:SSL
-      KAFKA_INTER_BROKER_LISTENER_NAME: SSL
+
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092,EXTERNAL://localhost:19095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SSL,EXTERNAL:SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
 
       KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.server.keystore.jks
       KAFKA_SSL_KEYSTORE_PASSWORD: password
@@ -114,8 +141,13 @@ services:
       KAFKA_SSL_TRUSTSTORE_PASSWORD: password
       KAFKA_SSL_CLIENT_AUTH: required
 
-      KAFKA_JMX_PORT: 9999
-      KAFKA_OPTS: "-javaagent:/opt/jmx/jmx_prometheus_javaagent.jar=7071:/opt/jmx/config.yml"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.5"
 
 # ----------------------------
 # SCHEMA REGISTRY
@@ -128,39 +160,21 @@ services:
     volumes:
       - ./secrets:/etc/kafka/secrets
     environment:
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: SSL://kafka-1:9093,SSL://kafka-2:9093,SSL://kafka-3:9093
-      SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL: SSL
-      SCHEMA_REGISTRY_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.server.truststore.jks
-      SCHEMA_REGISTRY_SSL_TRUSTSTORE_PASSWORD: password
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: SSL://kafka-1:9092,SSL://kafka-2:9092,SSL://kafka-3:9092
 
 # ----------------------------
-# KAFKA CONNECT (DEBEZIUM)
+# KAFKA CONNECT
 # ----------------------------
   kafka-connect:
     image: debezium/connect:2.5
     depends_on: [kafka-1, kafka-2, kafka-3]
     ports:
       - "8083:8083"
-    volumes:
-      - ./secrets:/etc/kafka/secrets
     environment:
-      BOOTSTRAP_SERVERS: kafka-1:9093,kafka-2:9093,kafka-3:9093
-      GROUP_ID: connect-cluster
-
-      CONFIG_STORAGE_TOPIC: _connect-configs
-      OFFSET_STORAGE_TOPIC: _connect-offsets
-      STATUS_STORAGE_TOPIC: _connect-status
-
-      CONFIG_STORAGE_REPLICATION_FACTOR: 3
-      OFFSET_STORAGE_REPLICATION_FACTOR: 3
-      STATUS_STORAGE_REPLICATION_FACTOR: 3
-
-      SECURITY_PROTOCOL: SSL
-      SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.server.truststore.jks
-      SSL_TRUSTSTORE_PASSWORD: password
+      BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
 
 # ----------------------------
-# POSTGRES (CDC SOURCE)
+# POSTGRES
 # ----------------------------
   postgres:
     image: postgres:15
@@ -168,11 +182,21 @@ services:
       POSTGRES_USER: debezium
       POSTGRES_PASSWORD: dbz
       POSTGRES_DB: orders
-    command: >
-      postgres -c wal_level=logical
+    command: postgres -c wal_level=logical
 
 # ----------------------------
-# PROMETHEUS
+# BACKUP SERVICE
+# ----------------------------
+  kafka-backup:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: [kafka-1]
+    volumes:
+      - ./backup:/backup
+    command: >
+      bash -c "while true; do kafka-topics --bootstrap-server kafka-1:9092 --list > /backup/topics.txt; sleep 300; done"
+
+# ----------------------------
+# OBSERVABILITY
 # ----------------------------
   prometheus:
     image: prom/prometheus
@@ -181,9 +205,6 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
 
-# ----------------------------
-# GRAFANA
-# ----------------------------
   grafana:
     image: grafana/grafana
     ports:
@@ -191,39 +212,39 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
 
-# ----------------------------
-# KAFKA EXPORTER
-# ----------------------------
   kafka-exporter:
     image: danielqsj/kafka-exporter
     ports:
       - "9308:9308"
     command:
-      - --kafka.server=kafka-1:9093
+      - --kafka.server=kafka-1:9092
 
 # ----------------------------
-# CRUISE CONTROL
+# LOAD BALANCER (NGINX)
 # ----------------------------
-  cruise-control:
-    image: confluentinc/cp-kafka-cruise-control:7.6.0
+  nginx:
+    image: nginx:latest
     ports:
-      - "8090:8090"
-    depends_on: [kafka-1, kafka-2, kafka-3]
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - kafka-ui
 
 # ----------------------------
-# AUTO-REBALANCE SERVICE
+# REBALANCE SERVICE
 # ----------------------------
   rebalance-service:
     image: python:3.11-slim
     ports:
-      - "8080:8080"
+      - "8082:8080"
     volumes:
       - ./rebalance.py:/app/rebalance.py
     working_dir: /app
     command: python rebalance.py
 
 # ----------------------------
-# KAFKA UI (NEW)
+# KAFKA UI
 # ----------------------------
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -234,21 +255,13 @@ services:
       - kafka-2
       - kafka-3
       - schema-registry
-    volumes:
-      - ./secrets:/etc/kafka/secrets
     environment:
       KAFKA_CLUSTERS_0_NAME: prod-cluster
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:9093,kafka-2:9093,kafka-3:9093
-      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SSL
-
-      KAFKA_CLUSTERS_0_PROPERTIES_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.server.truststore.jks
-      KAFKA_CLUSTERS_0_PROPERTIES_SSL_TRUSTSTORE_PASSWORD: password
-
-      KAFKA_CLUSTERS_0_PROPERTIES_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/client.keystore.jks
-      KAFKA_CLUSTERS_0_PROPERTIES_SSL_KEYSTORE_PASSWORD: password
-      KAFKA_CLUSTERS_0_PROPERTIES_SSL_KEY_PASSWORD: password
-
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
 
 volumes:
+  kafka-data-1:
+  kafka-data-2:
+  kafka-data-3:
   grafana-data:
