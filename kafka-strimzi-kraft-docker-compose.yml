@@ -1,0 +1,204 @@
+version: '3.8'
+
+services:
+
+  # ----------------------------
+  # KIND (KUBERNETES)
+  # ----------------------------
+  kind:
+    image: kindest/node:v1.29.2
+    container_name: kind-cluster
+    privileged: true
+    ports:
+      - "6443:6443"
+      - "9094:30094"
+    command: >
+      bash -c "
+      cat <<EOF > /kind-config.yaml
+      kind: Cluster
+      apiVersion: kind.x-k8s.io/v1alpha4
+      nodes:
+        - role: control-plane
+          extraMounts:
+            - hostPath: /tmp/kafka-data
+              containerPath: /data
+          extraPortMappings:
+            - containerPort: 30094
+              hostPort: 9094
+        - role: worker
+        - role: worker
+      EOF
+      kind create cluster --config /kind-config.yaml
+      sleep infinity
+      "
+
+  # ----------------------------
+  # BOOTSTRAP (ALL K8s RESOURCES)
+  # ----------------------------
+  bootstrap:
+    image: bitnami/kubectl:latest
+    depends_on: [kind]
+    entrypoint: >
+      bash -c "
+      echo 'Waiting for K8s...' && sleep 40 &&
+
+      kubectl create namespace kafka || true &&
+
+      echo 'Install Strimzi...' &&
+      kubectl apply -f https://strimzi.io/install/latest?namespace=kafka -n kafka &&
+
+      sleep 40 &&
+
+      echo 'Kafka Cluster (Persistent)...' &&
+      cat <<EOF | kubectl apply -f -
+      apiVersion: kafka.strimzi.io/v1beta2
+      kind: Kafka
+      metadata:
+        name: prod-cluster
+        namespace: kafka
+      spec:
+        kafka:
+          version: 3.7.0
+          replicas: 3
+
+          listeners:
+            - name: internal
+              port: 9092
+              type: internal
+              tls: false
+            - name: external
+              port: 9094
+              type: nodeport
+              tls: false
+              configuration:
+                bootstrap:
+                  nodePort: 30094
+
+          config:
+            default.replication.factor: 3
+            min.insync.replicas: 2
+            auto.create.topics.enable: false
+            offsets.topic.replication.factor: 3
+            transaction.state.log.replication.factor: 3
+            transaction.state.log.min.isr: 2
+
+          storage:
+            type: persistent-claim
+            size: 10Gi
+            deleteClaim: false
+
+        cruiseControl: {}
+
+        entityOperator:
+          topicOperator: {}
+          userOperator: {}
+      EOF
+
+      echo 'Kafka Connect (Debezium)...' &&
+      cat <<EOF | kubectl apply -f -
+      apiVersion: kafka.strimzi.io/v1beta2
+      kind: KafkaConnect
+      metadata:
+        name: connect-cluster
+        namespace: kafka
+        annotations:
+          strimzi.io/use-connector-resources: \"true\"
+      spec:
+        replicas: 1
+        bootstrapServers: prod-cluster-kafka-bootstrap:9092
+
+        config:
+          group.id: connect-cluster
+          offset.storage.topic: connect-offsets
+          config.storage.topic: connect-configs
+          status.storage.topic: connect-status
+
+          config.storage.replication.factor: 3
+          offset.storage.replication.factor: 3
+          status.storage.replication.factor: 3
+      EOF
+
+      echo 'Postgres DB...' &&
+      kubectl create deployment postgres --image=postgres:15 -n kafka || true
+      kubectl set env deployment/postgres POSTGRES_USER=debezium POSTGRES_PASSWORD=dbz POSTGRES_DB=orders -n kafka
+
+      kubectl expose deployment postgres --port=5432 --target-port=5432 --type=ClusterIP -n kafka || true
+
+      echo 'Debezium Connector...' &&
+      cat <<EOF | kubectl apply -f -
+      apiVersion: kafka.strimzi.io/v1beta2
+      kind: KafkaConnector
+      metadata:
+        name: postgres-connector
+        namespace: kafka
+        labels:
+          strimzi.io/cluster: connect-cluster
+      spec:
+        class: io.debezium.connector.postgresql.PostgresConnector
+        tasksMax: 1
+        config:
+          database.hostname: postgres
+          database.port: 5432
+          database.user: debezium
+          database.password: dbz
+          database.dbname: orders
+          database.server.name: orders-db
+          plugin.name: pgoutput
+      EOF
+
+      echo 'Schema Registry...' &&
+      kubectl create deployment schema-registry \
+        --image=confluentinc/cp-schema-registry:7.6.0 -n kafka || true
+
+      kubectl set env deployment/schema-registry \
+        SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://prod-cluster-kafka-bootstrap:9092 \
+        SCHEMA_REGISTRY_HOST_NAME=schema-registry \
+        -n kafka
+
+      kubectl expose deployment schema-registry --port=8081 --type=NodePort -n kafka || true
+
+      echo 'Create Topic...' &&
+      cat <<EOF | kubectl apply -f -
+      apiVersion: kafka.strimzi.io/v1beta2
+      kind: KafkaTopic
+      metadata:
+        name: orders
+        namespace: kafka
+        labels:
+          strimzi.io/cluster: prod-cluster
+      spec:
+        partitions: 6
+        replicas: 3
+      EOF
+
+      echo 'ALL DONE 🚀' &&
+      sleep infinity
+      "
+
+  # ----------------------------
+  # KAFKA UI
+  # ----------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    depends_on: [bootstrap]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: prod
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: host.docker.internal:9094
+
+  # ----------------------------
+  # PROMETHEUS
+  # ----------------------------
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+
+  # ----------------------------
+  # GRAFANA
+  # ----------------------------
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
